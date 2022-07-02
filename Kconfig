@@ -8,4 +8,12 @@ config SRCARCH
 	string
 	option env="SRCARCH"
 
+config VENDOR_EDIT
+	default y
+	bool "Lenovo support"
+	---help---
+	  This feature enables Lenovo specific hacks.
+
+	  If you don't know what to use this for, you don't need it.
+
 source "arch/$SRCARCH/Kconfig"
