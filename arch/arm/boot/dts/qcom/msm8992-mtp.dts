@@ -13,6 +13,8 @@
 
 /dts-v1/;
 
+#define CONFIG_VENDOR_EDIT
+
 #include "msm8992.dtsi"
 #include "msm8992-pinctrl.dtsi"
 #include "msm8992-mtp.dtsi"

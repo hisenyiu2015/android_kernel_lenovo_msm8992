@@ -200,19 +200,32 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,iterm-ma = <150>;
+#else
 			qcom,iterm-ma = <100>;
+#endif
 			qcom,fastchg-current-ma = <2000>;
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,float-voltage-mv = <4400>;
+			qcom,resume-delta-mv = <100>;
+#else
 			qcom,float-voltage-mv = <4350>;
 			qcom,resume-delta-mv = <200>;
+#endif
 			qcom,chg-inhibit-fg;
 			qcom,dc-psy-type = "Mains";
 			qcom,dc-psy-ma = <1500>;
 			qcom,rparasitic-uohm = <100000>;
 			qcom,bms-psy-name = "bms";
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,thermal-mitigation = <2000 1000 900 0>;
+#else
 			qcom,thermal-mitigation = <1500 700 600 0>;
 			qcom,parallel-usb-min-current-ma = <1400>;
 			qcom,parallel-usb-9v-min-current-ma = <900>;
 			qcom,parallel-allowed-lowering-ma = <500>;
+#endif
 			qcom,autoadjust-vfloat;
 			qcom,pmic-revid = <&pmi8994_revid>;
 
@@ -313,16 +326,34 @@
 			compatible = "qcom,qpnp-fg";
 			#address-cells = <1>;
 			#size-cells = <1>;
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,resume-soc = <99>;
+			qcom,thermal-coefficients = [DA 86 F0 50 08 3C];
+			qcom,thermal-coefficients-atl = [C8 86 C1 50 D3 37];
+#else
 			qcom,resume-soc = <95>;
+#endif
 			status = "okay";
 			qcom,bcl-lm-threshold-ma = <127>;
 			qcom,bcl-mh-threshold-ma = <405>;
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,fg-iterm-ma = <170>;
+			qcom,fg-chg-iterm-ma = <150>;
+#else
 			qcom,fg-iterm-ma = <125>;
 			qcom,fg-chg-iterm-ma = <100>;
+#endif
 			qcom,cycle-counter-en;
 			qcom,capacity-learning-on;
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,fg-cc-cv-threshold-mv = <4350>;
+#else
 			qcom,fg-cc-cv-threshold-mv = <4340>;
+#endif
 			qcom,pmic-revid = <&pmi8994_revid>;
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,vbat-estimate-diff-mv = <150>;
+#endif
 
 			qcom,fg-soc@4000 {
 				status = "okay";
@@ -551,6 +582,21 @@
 			interrupts = <0x3 0xc0 0x0>,
 				     <0x3 0xc0 0x1>;
 			interrupt-names = "sc-irq", "play-irq";
+#ifdef CONFIG_VENDOR_EDIT
+			qcom,play-mode = "buffer";
+			qcom,wave-play-rate-us = <4878>;
+			qcom,actuator-type = "lra";
+			qcom,wave-shape = "sine";
+			qcom,vmax-mv = <2200>;
+			qcom,ilim-ma = <800>;
+			qcom,sc-deb-cycles = <8>;
+			qcom,int-pwm-freq-khz = <505>;
+			qcom,en-brake;
+			qcom,brake-pattern = [03 03 03 03];
+			qcom,use-play-irq;
+			qcom,use-sc-irq;
+			qcom,wave-samples = [70 30 30 30 30 30 30 30];
+#else
 			qcom,play-mode = "direct";
 			qcom,wave-play-rate-us = <5263>;
 			qcom,actuator-type = "lra";
@@ -564,6 +610,7 @@
 			qcom,use-play-irq;
 			qcom,use-sc-irq;
 			qcom,wave-samples = [3e 3e 3e 3e 3e 3e 3e 3e];
+#endif
 			qcom,wave-rep-cnt = <1>;
 			qcom,wave-samp-rep-cnt = <1>;
 		};
@@ -581,8 +628,22 @@
 				pwms = <&pmi8994_pwm_3 0 0>;
 				qcom,pwm-us = <1000>;
 				qcom,max-current = <12>;
+#ifdef CONFIG_VENDOR_EDIT
+				qcom,use-blink;
+				qcom,start-idx = <1>;
+				qcom,ramp-step-ms = <30>;
+				qcom,duty-pcts = [02 04 06 08 10
+						12 14 16 18 20
+						22 20 18 16 14
+						12 10 08 06 04
+						02 00];
+				qcom,lut-flags = <11>;
+				qcom,pause-lo = <0>;
+				qcom,pause-hi = <2500>;
+#endif
 				qcom,default-state = "off";
 				linux,name = "red";
+#ifndef CONFIG_VENDOR_EDIT
 				linux,default-trigger =
 					"battery-charging";
 			};
@@ -609,6 +670,7 @@
 				qcom,default-state = "off";
 				linux,name = "blue";
 				linux,default-trigger = "boot-indication";
+#endif
 			};
 		};
 

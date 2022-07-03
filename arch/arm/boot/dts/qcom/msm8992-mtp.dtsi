@@ -19,14 +19,22 @@
 #include "dsi-panel-nt35597-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-wqxga-cmd.dtsi"
 #include "dsi-panel-jdi-1080p-video.dtsi"
-
+#ifdef CONFIG_VENDOR_EDIT
+#include "dsi-panel-otm1906c-1080p-cmd.dtsi" 
+#include "dsi-panel-otm1906c-tm-1080p-cmd.dtsi" 
+#endif
 &mdss_mdp {
 	qcom,mdss-pref-prim-intf = "dsi";
 };
 
 &pmx_mdss {
+#ifdef CONFIG_VENDOR_EDIT
+	qcom,num-grp-pins = <3>;
+	qcom,pins = <&gp 8>,<&gp 78>,<&gp 107>;
+#else
 	qcom,num-grp-pins = <1>;
 	qcom,pins = <&gp 78>;
+#endif
 };
 
 &pmx_mdss_te {
@@ -35,6 +43,16 @@
 };
 
 &mdss_dsi0 {
+#ifdef CONFIG_VENDOR_EDIT
+	qcom,dsi-pref-prim-pan = <&dsi_otm1906c_tm_1080p_cmd>;
+	pinctrl-names = "mdss_default", "mdss_sleep";
+	pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
+	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
+	qcom,dsi-panel-bias-vreg;
+	qcom,platform-reset-gpio = <&msm_gpio 78 0>;
+	qcom,platform-bklight-en-gpio = <&msm_gpio 107 0>;
+	qcom,platform-te-gpio = <&msm_gpio 10 0>;
+#else
 	qcom,dsi-pref-prim-pan = <&dsi_dual_sharp_video_0>;
 	pinctrl-names = "mdss_default", "mdss_sleep";
 	pinctrl-0 = <&mdss_dsi_active>;
@@ -43,12 +61,34 @@
 	qcom,platform-reset-gpio = <&msm_gpio 78 0>;
 	qcom,platform-bklight-en-gpio = <&pmi8994_gpios 2 0>;
 	qcom,platform-enable-gpio = <&pm8994_gpios 14 0>;
+#endif
 };
 
+#ifndef CONFIG_VENDOR_EDIT
 &mdss_dsi1 {
 	qcom,dsi-pref-prim-pan = <&dsi_dual_sharp_video_1>;
 };
+#endif
 
+#ifdef CONFIG_VENDOR_EDIT
+&dsi_otm1906c_1080p_cmd {
+	pwms = <&pmi8994_pwm_4 0 0>;
+	pwm-names = "backlight";
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
+    qcom,cont-splash-enabled;
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <255>;
+};
+
+&dsi_otm1906c_tm_1080p_cmd {
+	pwms = <&pmi8994_pwm_4 0 0>;
+	pwm-names = "backlight";
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
+    qcom,cont-splash-enabled;
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <255>;
+};
+#endif
 &dsi_nt35597_wqxga_video {
 	qcom,cont-splash-enabled;
 };
@@ -99,17 +139,29 @@
 
 &pmx_hdmi_cec {
 	qcom,num-grp-pins = <1>;
+#ifdef CONFIG_VENDOR_EDIT
+	qcom,pins = <&gp 91>;
+#else
 	qcom,pins = <&gp 31>;
+#endif
 };
 
 &pmx_hdmi_ddc {
+#ifdef CONFIG_VENDOR_EDIT
+	qcom,num-grp-pins = <0>;
+#else
 	qcom,num-grp-pins = <2>;
 	qcom,pins = <&gp 32>, <&gp 33>;
+#endif
 };
 
 &pmx_hdmi_hpd {
+#ifdef CONFIG_VENDOR_EDIT
+	qcom,num-grp-pins = <0>;
+#else
 	qcom,num-grp-pins = <1>;
 	qcom,pins = <&gp 34>;
+#endif
 };
 
 &mdss_hdmi_tx {
@@ -205,7 +257,11 @@
 			1 &intc 0 221 0
 			2 &pm8994_gpios 8 0x3>;
 	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
+#ifdef CONFIG_VENDOR_EDIT
+	cd-gpios = <&pm8994_gpios 8 0>;
+#else
 	cd-gpios = <&pm8994_gpios 8 0x1>;
+#endif
 
 	pinctrl-names = "active", "sleep";
 	pinctrl-0 = <&sdc2_clk_on &sdc2_cmd_on &sdc2_data_on>;
@@ -391,12 +447,32 @@
 		compatible = "synaptics,dsx";
 		reg = <0x20>;
 		interrupt-parent = <&msm_gpio>;
+#ifdef CONFIG_VENDOR_EDIT
+		interrupts = <57 0x2008>;
+#else
 		interrupts = <61 0x2008>;
+#endif
 		vdd-supply = <&pm8994_l14>;
 		avdd-supply = <&pm8994_l22>;
+#ifdef CONFIG_VENDOR_EDIT
+			synaptics,pwr-reg-name = "vdd";
+			synaptics,bus-reg-name = "avdd";
+#endif
 		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
 		pinctrl-0 = <&ts_active>;
 		pinctrl-1 = <&ts_suspend>;
+#ifdef CONFIG_VENDOR_EDIT
+		synaptics,irq-gpio = <&msm_gpio 57 0x02>;
+		synaptics,reset-gpio = <&msm_gpio 102 0x00>;
+		synaptics,reset-on-state = <0>;
+		synaptics,irq-on-state = <0>;
+		synaptics,irq-flags = <0x2008>;
+		synaptics,power-delay-ms = <70>;
+		synaptics,reset-delay-ms = <5>;
+		synaptics,reset-active-ms = <25>;
+		synaptics,max-y-for-2d = <1919>;
+		synaptics,cap-button-codes = <580 172 158>;
+#else
 		synaptics,display-coords = <0 0 1599 2559>;
 		synaptics,panel-coords = <0 0 1599 2703>;
 		synaptics,reset-gpio = <&msm_gpio 60 0x00>;
@@ -404,12 +480,34 @@
 		synaptics,disable-gpios;
 		/* Underlying clocks used by secure touch */
 		clock-names = "iface_clk", "core_clk";
+#endif
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
 			 <&clock_gcc clk_gcc_blsp1_qup2_i2c_apps_clk>;
+#ifdef CONFIG_VENDOR_EDIT
+		clock-names = "iface_clk", "core_clk";
+#endif
 	};
 };
 
 &i2c_5 {
+#ifdef CONFIG_VENDOR_EDIT
+        cwstm32@3a {
+            compatible = "cwstm,cwstm32";
+            reg = <0x3a>;
+            interrupt-parent = <&msm_gpio>;
+            interrupts = <73 0x2>;
+            pinctrl-names = "i2c_active", "i2c_sleep";
+            pinctrl-0 = <&i2c_5_1_active &i2c_5_2_active &cwmcu_default>;
+            pinctrl-1 = <&i2c_5_1_sleep  &i2c_5_2_sleep>;
+            cwstm,irq-gpio = <&msm_gpio 73 0x2>;
+            cwstm,wakeup-gpio = <&msm_gpio 38 0x00>;
+            cwstm,reset-gpio = <&msm_gpio 25 0x0>;
+            cwstm,boot-gpio = <&msm_gpio 72 0x0>; 
+            vdd-supply = <&pm8994_lvs2>;
+            vcc_i2c-supply = <&pm8994_lvs2>;
+            vdd_sensors-supply = <&pm8994_l18>;
+        };
+#else
 	silabs4705@11 { /* SiLabs FM chip, slave id 0x11*/
 		status = "ok";
 		compatible = "silabs,si4705";
@@ -442,6 +540,7 @@
 		qcom,float-voltage-mv = <4400>;
 		qcom,recharge-thresh-mv = <100>;
 	};
+#endif
 };
 
 &soc {
@@ -457,6 +556,22 @@
 
 	i2c@f9928000 { /* BLSP1 QUP6 */
 		status = "ok";
+#ifdef CONFIG_VENDOR_EDIT
+		nfc-nci@76 {
+                        compatible = "brcm,bcm2079x";
+                        reg = <0x76>;
+                        brcm,irq-gpio = <&msm_gpio 29 0x00>;
+                        brcm,pwr-gpio = <&msm_gpio 30 0x00>;
+                        qcom,clk-src = "BBCLK2";
+                        interrupt-parent = <&msm_gpio>;
+                        interrupts = <29 0>;
+                        interrupt-names = "nfc_irq";
+                        qcom,clk-gpio = <&pm8994_gpios 10 0>;
+                        brcm,wak-gpio = <&pm8994_gpios 7 0>;
+                        clocks = <&clock_rpm clk_bb_clk2_pin>;
+                        clock-names = "ref_clk";
+                };
+#else
 		nfc-nci@e {
 			compatible = "qcom,nfc-nci";
 			reg = <0x0e>;
@@ -492,6 +607,7 @@
 			clocks = <&clock_rpm clk_bb_clk2_pin>;
 			clock-names = "ref_clk";
 		};
+#endif
 	};
 
 	gpio_keys {
@@ -525,10 +641,27 @@
 			debounce-interval = <15>;
 		};
 	};
+#ifdef CONFIG_VENDOR_EDIT
+	hall_switch {
+			   compatible = "hall_switch";
+			   hall,irq-gpio = <&msm_gpio 96 0>; 
+		 };
+#endif
 
 	sound {
 		qcom,model = "msm8994-tomtom-mtp-snd-card";
-
+#ifdef CONFIG_VENDOR_EDIT
+		asoc-codec = <&stub_codec>;
+		asoc-codec-names = "msm-stub-codec.1";
+	};
+	hw_ver {
+		reg = <0 0x0>;
+		compatible = "hw-version";
+		gpios = <&msm_gpio 116 0>, /* VER_GPIO0 */
+		<&msm_gpio 133 0>,   /* VER_GPIO1 */
+		<&msm_gpio 128 0>;   /* VER_GPIO2 */
+	};
+#else
 		qcom,audio-routing =
 			"AIF4 VI", "MCLK",
 			"RX_BIAS", "MCLK",
@@ -569,6 +702,7 @@
 		asoc-codec = <&stub_codec>, <&hdmi_audio>;
 		asoc-codec-names = "msm-stub-codec.1", "msm-hdmi-audio-codec-rx";
 	};
+#endif
 };
 
 &pm8994_vadc {
@@ -783,8 +917,14 @@
 
 /{
 	mtp_batterydata: qcom,battery-data {
+#ifdef CONFIG_VENDOR_EDIT
+		qcom,batt-id-range-pct = <10>;
+		#include "2033688_Lenovo_BL258_LG_3500mAh_PMI8994GUI2165.dtsi"
+		#include "2086226_Lenovo_BL258_ATL_3600mAh_PMI8994GUI2167.dtsi"
+#else
 		qcom,batt-id-range-pct = <15>;
 		#include "batterydata-itech-3000mah.dtsi"
+#endif
 	};
 };
 
