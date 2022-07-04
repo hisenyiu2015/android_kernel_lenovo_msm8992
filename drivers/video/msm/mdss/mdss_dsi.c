@@ -30,7 +30,9 @@
 #include "mdss_debug.h"
 
 #define XO_CLK_RATE	19200000
-
+#ifdef CONFIG_VENDOR_EDIT
+extern int gesture_flag;
+#endif
 static struct dsi_drv_cm_data shared_ctrl_data;
 
 static int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
@@ -163,8 +165,15 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
+#ifdef CONFIG_VENDOR_EDIT
+    if(gesture_flag != 1)
+    {
+#endif
 
 	ret = mdss_dsi_panel_reset(pdata, 0);
+#ifdef CONFIG_VENDOR_EDIT
+    }
+#endif
 	if (ret) {
 		pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
 		ret = 0;
@@ -176,8 +185,15 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 	if (ctrl_pdata->panel_bias_vreg) {
 		pr_debug("%s: Disabling panel bias vreg. ndx = %d\n",
 		       __func__, ctrl_pdata->ndx);
+#ifdef CONFIG_VENDOR_EDIT
+        if(gesture_flag != 1)
+        {
+#endif
 		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, false))
 			pr_err("Unable to disable bias vreg\n");
+#ifdef CONFIG_VENDOR_EDIT
+        }
+#endif
 		/* Add delay recommended by panel specs */
 		udelay(2000);
 	}
@@ -201,6 +217,9 @@ end:
 	return ret;
 }
 
+#ifdef CONFIG_VENDOR_EDIT
+static int first_bias_vreg=1;
+#endif
 static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
@@ -234,8 +253,25 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	if (ctrl_pdata->panel_bias_vreg) {
 		pr_debug("%s: Enable panel bias vreg. ndx = %d\n",
 		       __func__, ctrl_pdata->ndx);
+#ifdef CONFIG_VENDOR_EDIT
+        if((first_bias_vreg ==1)||(gesture_flag != 1))
+        {
+            if(first_bias_vreg == 0)
+            {
+                gpio_set_value(ctrl_pdata->rst_gpio,1);
+                usleep(3000);
+                gpio_set_value(ctrl_pdata->rst_gpio,0);
+                usleep(3000);
+                gpio_set_value(ctrl_pdata->rst_gpio,1);
+                usleep(3000);
+            }
+            first_bias_vreg = 0;
+#endif
 		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, true))
 			pr_err("Unable to configure bias vreg\n");
+#ifdef CONFIG_VENDOR_EDIT
+        }
+#endif
 		/* Add delay recommended by panel specs */
 		udelay(2000);
 	}
@@ -1683,6 +1719,17 @@ end:
 	return dsi_pan_node;
 }
 
+#ifdef CONFIG_VENDOR_EDIT
+int LCD_ID = -1;
+static int __init board_LCDID_setup(char *lcdid)
+{
+	sscanf(lcdid, "%x", &LCD_ID);
+	printk("##%s: get lcdid from lk: str: %s  to numID: %x\n", __func__, lcdid, LCD_ID);
+	return 1;
+}
+__setup("androidboot.lcdid=", board_LCDID_setup);
+#endif
+
 static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 {
 	int rc = 0, i = 0;
@@ -1877,6 +1924,28 @@ static int mdss_dsi_ctrl_remove(struct platform_device *pdev)
 }
 
 struct device dsi_dev;
+#ifdef CONFIG_VENDOR_EDIT
+int mdss_dsi_panel_is_ready(struct mdss_dsi_ctrl_pdata *ctrl) 
+{ 
+    int ret = 1; 
+    u32 status; 
+    unsigned char *base; 
+    if(!(( 0 == LCD_ID)||(1== LCD_ID)))
+        return ret;
+    base = ctrl->ctrl_base; 
+
+    status = MIPI_INP(base + 0x0004); 
+
+    pr_err("%s status=0x%x \n", __func__, status); 
+
+    if(ctrl->panel_data.panel_info.mipi.mode == DSI_VIDEO_MODE && (status & 0x2) == 0) 
+    { 
+        ret = 0; 
+    } 
+
+    return ret; 
+} 
+#endif
 
 int mdss_dsi_retrieve_ctrl_resources(struct platform_device *pdev, int mode,
 			struct mdss_dsi_ctrl_pdata *ctrl)
@@ -1951,6 +2020,12 @@ int mdss_dsi_retrieve_ctrl_resources(struct platform_device *pdev, int mode,
 			__func__, __LINE__);
 	}
 
+#ifdef CONFIG_VENDOR_EDIT
+    if(mdss_dsi_panel_is_ready(ctrl) == 0)
+    { 
+        ctrl->panel_data.panel_info.cont_splash_enabled = 0; 
+    } 
+#endif
 	return 0;
 }
 
@@ -2118,6 +2193,12 @@ int dsi_panel_device_register(struct device_node *pan_node,
 		"qcom,platform-bklight-en-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->bklt_en_gpio))
 		pr_info("%s: bklt_en gpio not specified\n", __func__);
+#ifdef CONFIG_VENDOR_EDIT
+	ctrl_pdata->bladj_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-bladj-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->bladj_en_gpio))
+		pr_info("%s: bladj_en gpio not specified\n", __func__);
+#endif
 
 	ctrl_pdata->rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 			 "qcom,platform-reset-gpio", 0);
