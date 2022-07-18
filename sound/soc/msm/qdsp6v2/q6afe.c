@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, 2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2160,7 +2160,7 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 				  sizeof(struct afe_port_param_data_v2);
 
 	lb_cmd.dst_port_id = rx_port;
-	lb_cmd.routing_mode = LB_MODE_DEFAULT;
+	lb_cmd.routing_mode = LB_MODE_EC_REF_VOICE_AUDIO;
 	lb_cmd.enable = (enable ? 1 : 0);
 	lb_cmd.loopback_cfg_minor_version = AFE_API_VERSION_LOOPBACK_CONFIG;
 
@@ -2528,9 +2528,8 @@ int q6afe_audio_client_buf_alloc_contiguous(unsigned int dir,
 	struct afe_audio_buffer *buf;
 	size_t len;
 
-	if (!(ac) || !(bufsz) || ((dir != IN) && (dir != OUT))) {
-		pr_err("%s: ac %p bufsz %d dir %d\n", __func__, ac, bufsz,
-			dir);
+	if (!(ac) || ((dir != IN) && (dir != OUT))) {
+		pr_err("%s: ac %p dir %d\n", __func__, ac, dir);
 		return -EINVAL;
 	}
 
@@ -3172,7 +3171,7 @@ static ssize_t afe_debug_write(struct file *filp,
 
 	lbuf[cnt] = '\0';
 
-	if (!strcmp(lb_str, "afe_loopback")) {
+	if (!strncmp(lb_str, "afe_loopback", 12)) {
 		rc = afe_get_parameters(lbuf, param, 3);
 		if (!rc) {
 			pr_info("%s: %lu %lu %lu\n", lb_str, param[0], param[1],
@@ -3201,7 +3200,7 @@ static ssize_t afe_debug_write(struct file *filp,
 			rc = -EINVAL;
 		}
 
-	} else if (!strcmp(lb_str, "afe_loopback_gain")) {
+	} else if (!strncmp(lb_str, "afe_loopback_gain", 17)) {
 		rc = afe_get_parameters(lbuf, param, 2);
 		if (!rc) {
 			pr_info("%s: %s %lu %lu\n",
@@ -3456,6 +3455,7 @@ int afe_validate_port(u16 port_id)
 	case AFE_PORT_ID_QUATERNARY_MI2S_RX:
 	case AFE_PORT_ID_QUATERNARY_MI2S_TX:
 	case AFE_PORT_ID_TERTIARY_MI2S_TX:
+	case AFE_PORT_ID_TERTIARY_MI2S_RX:
 	{
 		ret = 0;
 		break;
