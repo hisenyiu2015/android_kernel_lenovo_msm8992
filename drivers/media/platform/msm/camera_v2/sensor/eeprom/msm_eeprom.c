@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,7 +19,51 @@
 #include "msm_eeprom.h"
 
 #undef CDBG
+//#define MSM_EEPROM_DEBUG
+#ifdef MSM_EEPROM_DEBUG
+#define CDBG(fmt, args...) pr_err(fmt, ##args)
+#else
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
+#endif
+/*+begin huangsh4 add eeprom checksum function 2015-04-10*/
+#define X3_EEPROM_FEATURE
+#ifdef X3_EEPROM_FEATURE
+#define E2PROM_JUCHEN "juchen"
+#define E2PROM_ONSEMI "onsemi_cat24c64"
+
+#define IS_E2PROM_JUCHEN(x) if (!strcmp(x, E2PROM_JUCHEN))
+#define IS_E2PROM_ONSEMI(x) if (!strcmp(x, E2PROM_ONSEMI))
+#define THREEA_BEGIN_OFFSET 0
+#define THREEA_END_OFFSET 3776
+#define THREEA_CHKSUM_HI_OFFSET 3777
+#define THREEA_CHKSUM_LOW_OFFSET 3778
+#define WB_BEGIN_OFFSET 184
+#define WB_END_OFFSET 232
+#define WB_CHKSUM_HI_OFFSET 233
+#define WB_CHKSUM_LOW_OFFSET 234
+#define LSC_BEGIN_OFFSET 235
+#define LSC_END_OFFSET 2003
+#define LSC_CHKSUM_HI_OFFSET 2004
+#define LSC_CHKSUM_LOW_OFFSET 2005
+#define AF_BEGIN_OFFSET 51
+#define AF_END_OFFSET 181
+#define AF_CHKSUM_HI_OFFSET 182
+#define AF_CHKSUM_LOW_OFFSET 183
+#define PDAF_BEGIN_OFFSET 3328
+#define PDAF_END_OFFSET 3776
+#define	PDAF_CHKSUM_HI_OFFSET 3777
+#define PDAF_CHKSUM_LOW_OFFSET 3778
+uint8_t is_3a_checksumed = 0;
+uint8_t is_pdaf_checksumed = 0;
+//add for front camera
+#define FRONT_THREEA_BEGIN_OFFSET 0
+#define FRONT_THREEA_END_OFFSET 988
+#define FRONT_THREEA_CHKSUM_HI_OFFSET 989
+#define FRONT_THREEA_CHKSUM_LOW_OFFSET 990
+uint8_t FRONT_is_3a_checksumed = 0;
+#endif
+/*+ end*/
+
 
 DEFINE_MSM_MUTEX(msm_eeprom_mutex);
 #ifdef CONFIG_COMPAT
@@ -130,6 +174,7 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 	}
 
 	eb_info = e_ctrl->eboard_info;
+
 	for (j = 0; j < block->num_map; j++) {
 		if (emap[j].saddr.addr) {
 			eb_info->i2c_slaveaddr = emap[j].saddr.addr;
@@ -138,6 +183,7 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 			CDBG("qcom,slave-addr = 0x%X\n",
 				eb_info->i2c_slaveaddr);
 		}
+
 		if (emap[j].page.valid_size) {
 			e_ctrl->i2c_client.addr_type = emap[j].page.addr_t;
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
@@ -171,6 +217,7 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 				return rc;
 			}
 		}
+
 		if (emap[j].mem.valid_size) {
 			e_ctrl->i2c_client.addr_type = emap[j].mem.addr_t;
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_read_seq(
@@ -196,14 +243,202 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 	return rc;
 }
 
+#ifdef X3_EEPROM_FEATURE
+static int read_eeprom_memory_and_checksum(struct msm_eeprom_ctrl_t *e_ctrl,
+	struct msm_eeprom_memory_block_t *block)
+{
+	int rc = -1;
+	int j = 0;
+	int32_t loop = 0;
+        int32_t data_index;
+        int32_t data_3a_sum = 0;
+        int32_t data_wb_sum, data_lsc_sum, data_af_sum;
+        int32_t data_3a_sum_front;
+        int32_t data_pdaf_sum = 0;
+	struct msm_eeprom_board_info *eb_info = NULL;
+
+	eb_info = e_ctrl->eboard_info;
+
+	/* begin: add ljk for checksum eeprom*/
+	IS_E2PROM_JUCHEN(eb_info->eeprom_name)
+	{
+		do{
+			data_3a_sum_front = 0;
+			rc = read_eeprom_memory(e_ctrl, &e_ctrl->cal_data);
+			if (rc < 0) {
+				pr_err("%s read_eeprom_memory failed loop=%d\n", __func__,loop);
+			}
+			else if((rc < 0)&&(loop>4)) {
+				pr_err("%s read_eeprom_memory failed loop=%d\n", __func__,loop);
+				return -1;
+			}
+			else
+			{
+				/*+begin huangsh4 add eeprom info log 2015-05-19*/
+				CDBG("%s: module version = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+12]);
+				CDBG("%s: sensor id  = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+13]);
+				CDBG("%s: year = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+42]);
+				CDBG("%s: mount = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+43]);
+				CDBG("%s: day = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+44]);
+				CDBG("%s: hour = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+45]);
+				CDBG("%s: min = %d \n",__func__,e_ctrl->cal_data.mapdata[FRONT_THREEA_BEGIN_OFFSET+46]);
+				/*+end add eeprom info log 2015-05-19*/
+				for(data_index=FRONT_THREEA_BEGIN_OFFSET; data_index <= FRONT_THREEA_END_OFFSET; data_index++)
+				{
+					data_3a_sum_front = data_3a_sum_front+e_ctrl->cal_data.mapdata[data_index];
+				//    CDBG("%s data_3a_sum_front=0x%x .mapdata[%d]=0x%x\n", __func__,data_3a_sum_front,data_index,e_ctrl->cal_data.mapdata[data_index]);
+				}
+				CDBG("%s: data_3a_sum_front = 0x%x  temp_data=0x%x 0x%x\n",__func__,
+					data_3a_sum_front,
+					(*(e_ctrl->cal_data.mapdata+FRONT_THREEA_CHKSUM_HI_OFFSET)),
+					(*(e_ctrl->cal_data.mapdata+FRONT_THREEA_CHKSUM_LOW_OFFSET)));
+				if((data_3a_sum_front&0xffff)==(((*(e_ctrl->cal_data.mapdata+FRONT_THREEA_CHKSUM_HI_OFFSET))<<8)|
+					(*(e_ctrl->cal_data.mapdata+FRONT_THREEA_CHKSUM_LOW_OFFSET))))
+				{
+					CDBG("%s: data_3a_sum_front data success!  loop = %d\n",__func__,loop);
+					FRONT_is_3a_checksumed = 1;
+				}
+				else //checksum==0
+				{
+					pr_err("%s: data_3a_sum_front data fail!  loop=%d\n",__func__,loop);
+					FRONT_is_3a_checksumed = 0;
+				}
+			}
+			loop++;
+		} while ((loop < 3)&&(FRONT_is_3a_checksumed == 0));
+
+		if (loop >= 3) {
+			pr_err("%s loop=%d >= 3 read_eeprom_memory failed\n", __func__,loop);
+			return -1;
+		}
+	}//end for front camera eeprom juchen
+	else IS_E2PROM_ONSEMI(eb_info->eeprom_name) {
+		do {
+			data_3a_sum = 0;
+			data_wb_sum = 0;
+			data_lsc_sum = 0;
+			data_af_sum = 0;
+			data_pdaf_sum = 0;
+			rc = read_eeprom_memory(e_ctrl, &e_ctrl->cal_data);
+			if (rc < 0) {
+				pr_err("%s read_eeprom_memory failed loop=%d\n", __func__,loop);
+			}
+			else if((rc < 0)&&(loop>4)) {
+				pr_err("%s read_eeprom_memory failed loop=%d\n", __func__,loop);
+				return -1;
+			}
+			else {
+				for(data_index = WB_BEGIN_OFFSET; data_index <= WB_END_OFFSET; data_index++) {
+					data_wb_sum = data_wb_sum + e_ctrl->cal_data.mapdata[data_index];
+				}
+
+				CDBG("%s: data_wb_sum = 0x%x  temp_data=0x%x 0x%x\n",__func__,
+					data_wb_sum,
+					(*(e_ctrl->cal_data.mapdata + WB_CHKSUM_HI_OFFSET)),
+					(*(e_ctrl->cal_data.mapdata + WB_CHKSUM_LOW_OFFSET)));
+				if((data_wb_sum & 0xffff)
+					== (((*(e_ctrl->cal_data.mapdata + WB_CHKSUM_HI_OFFSET))<<8) | (*(e_ctrl->cal_data.mapdata + WB_CHKSUM_LOW_OFFSET)))) {
+					CDBG("%s: data_wb_sum data success!  loop = %d\n",__func__,loop);
+					is_3a_checksumed = 1;
+				} else {
+					pr_err("%s: data_wb_sum data fail!  loop=%d\n",__func__,loop);
+					is_3a_checksumed = 0;
+					break;
+				}
+
+				for(data_index = LSC_BEGIN_OFFSET; data_index <= LSC_END_OFFSET; data_index++) {
+					data_lsc_sum = data_lsc_sum + e_ctrl->cal_data.mapdata[data_index];
+				}
+				CDBG("%s: data_lsc_sum = 0x%x  temp_data=0x%x 0x%x\n",__func__,
+					data_lsc_sum,
+					(*(e_ctrl->cal_data.mapdata + LSC_CHKSUM_HI_OFFSET)),
+					(*(e_ctrl->cal_data.mapdata + LSC_CHKSUM_LOW_OFFSET)));
+				if((data_lsc_sum & 0xffff)
+					== (((*(e_ctrl->cal_data.mapdata + LSC_CHKSUM_HI_OFFSET))<<8) | (*(e_ctrl->cal_data.mapdata + LSC_CHKSUM_LOW_OFFSET)))) {
+					CDBG("%s: data_lsc_sum data success!  loop = %d\n",__func__,loop);
+					is_3a_checksumed = 1;
+				} else {
+					pr_err("%s: data_lsc_sum data fail!  loop=%d\n",__func__,loop);
+					is_3a_checksumed = 0;
+					break;
+				}
+
+				for(data_index = AF_BEGIN_OFFSET; data_index <= AF_END_OFFSET; data_index++) {
+					data_af_sum = data_af_sum + e_ctrl->cal_data.mapdata[data_index];
+				}
+				CDBG("%s: data_af_sum = 0x%x  temp_data=0x%x 0x%x\n",__func__,
+					data_af_sum,
+					(*(e_ctrl->cal_data.mapdata + AF_CHKSUM_HI_OFFSET)),
+					(*(e_ctrl->cal_data.mapdata + AF_CHKSUM_LOW_OFFSET)));
+				if((data_af_sum & 0xffff)
+					== (((*(e_ctrl->cal_data.mapdata + AF_CHKSUM_HI_OFFSET))<<8) | (*(e_ctrl->cal_data.mapdata + AF_CHKSUM_LOW_OFFSET)))) {
+					CDBG("%s: data_af_sum data success!  loop = %d\n",__func__,loop);
+					is_3a_checksumed = 1;
+				} else {
+					pr_err("%s: data_af_sum data fail!  loop=%d\n",__func__,loop);
+					is_3a_checksumed = 0;
+					break;
+				}
+
+				for(data_index = PDAF_BEGIN_OFFSET; data_index <= PDAF_END_OFFSET; data_index++) {
+					data_pdaf_sum = data_pdaf_sum + e_ctrl->cal_data.mapdata[data_index];
+				}
+				CDBG("%s: data_pdaf_sum = 0x%x  temp_data=0x%x 0x%x\n",__func__,
+					data_pdaf_sum,
+					(*(e_ctrl->cal_data.mapdata + PDAF_CHKSUM_HI_OFFSET)),
+					(*(e_ctrl->cal_data.mapdata + PDAF_CHKSUM_LOW_OFFSET)));
+				if((data_pdaf_sum & 0xffff)
+					== (((*(e_ctrl->cal_data.mapdata + PDAF_CHKSUM_HI_OFFSET))<<8) | (*(e_ctrl->cal_data.mapdata + PDAF_CHKSUM_LOW_OFFSET)))) {
+					CDBG("%s: data_pdaf_sum data success!  loop = %d\n",__func__,loop);
+					is_pdaf_checksumed = 1;
+				} else {
+					pr_err("%s: data_pdaf_sum data fail!  loop=%d\n",__func__,loop);
+					is_pdaf_checksumed = 0;
+				}
+			}
+			loop++;
+		} while ((loop < 3)&&((is_3a_checksumed == 0) || (is_pdaf_checksumed == 0)));
+
+		if (loop >= 3) {
+			pr_err("%s loop=%d >= 3 read_eeprom_memory failed\n", __func__,loop);
+			return -1;
+		}
+	}// end for onsemi cat24c64
+	else {
+		rc = read_eeprom_memory(e_ctrl, &e_ctrl->cal_data);
+		if (rc < 0) {
+			pr_err("%s read_eeprom_memory failed\n", __func__);
+			return -1;
+		}
+
+		for (j = 0; j < e_ctrl->cal_data.num_data; j++)
+			CDBG("memory_data[%d] = 0x%X\n", j,	e_ctrl->cal_data.mapdata[j]);
+
+		for (j = THREEA_BEGIN_OFFSET; j <= THREEA_END_OFFSET; j++)
+		{
+			data_3a_sum = data_3a_sum + e_ctrl->cal_data.mapdata[j];
+		}
+		CDBG("eeprom data_3a_sum = 0x%x\n", data_3a_sum);
+
+		e_ctrl->is_checksumed = 0;
+		if ((data_3a_sum & 0xffff)==(((*(e_ctrl->cal_data.mapdata+THREEA_CHKSUM_HI_OFFSET))<<8)|(*(e_ctrl->cal_data.mapdata+THREEA_CHKSUM_LOW_OFFSET))))
+		{
+			e_ctrl->is_checksumed = 1;
+		}
+		CDBG("eeprom is_checksumed = %d\n", e_ctrl->is_checksumed);
+	}
+	return rc;
+}
+#endif
+
 static int eeprom_config_read_cal_data(struct msm_eeprom_ctrl_t *e_ctrl,
 	struct msm_eeprom_cfg_data *cdata)
 {
 	int rc;
 
-	if (e_ctrl->read_eeprom == 0) {
+        if (e_ctrl->read_eeprom == 0) {
 		rc = msm_camera_power_up(&e_ctrl->eboard_info->power_info,
-			e_ctrl->eeprom_device_type, &e_ctrl->i2c_client);
+		e_ctrl->eeprom_device_type, &e_ctrl->i2c_client);
 		if (rc < 0) {
 			pr_err("failed rc %d\n", rc);
 			goto power_down;
@@ -216,13 +451,14 @@ static int eeprom_config_read_cal_data(struct msm_eeprom_ctrl_t *e_ctrl,
 		e_ctrl->is_supported |= msm_eeprom_match_crc(&e_ctrl->cal_data);
 		CDBG("e_ctrl is supported %d\n", e_ctrl->is_supported);
 		rc = msm_camera_power_down(&e_ctrl->eboard_info->power_info,
-			e_ctrl->eeprom_device_type,	&e_ctrl->i2c_client);
+			e_ctrl->eeprom_device_type,     &e_ctrl->i2c_client);
 		if (rc < 0) {
 			pr_err("failed rc %d\n", rc);
 			goto power_down;
 		}
 		e_ctrl->read_eeprom = 1;
 	}
+
 	/* check range */
 	if (cdata->cfg.read_data.num_bytes >
 		e_ctrl->cal_data.num_data) {
@@ -250,20 +486,12 @@ static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	struct msm_eeprom_cfg_data *cdata =
 		(struct msm_eeprom_cfg_data *)argp;
 	int rc = 0;
-	size_t length = 0;
 
 	CDBG("%s E\n", __func__);
 	switch (cdata->cfgtype) {
 	case CFG_EEPROM_GET_INFO:
 		CDBG("%s E CFG_EEPROM_GET_INFO\n", __func__);
 		cdata->is_supported = e_ctrl->is_supported;
-		length = strlen(e_ctrl->eboard_info->eeprom_name) + 1;
-		if (length > MAX_EEPROM_NAME) {
-			pr_err("%s:%d invalid eeprom name length %d\n",
-				__func__, __LINE__, (int)length);
-			rc = -EINVAL;
-			break;
-		}
 		memcpy(cdata->cfg.eeprom_name,
 			e_ctrl->eboard_info->eeprom_name,
 			sizeof(cdata->cfg.eeprom_name));
@@ -428,7 +656,7 @@ static int msm_eeprom_parse_memory_map(struct device_node *of,
 		rc = of_property_read_u32_array(of, property,
 			(uint32_t *) &map[i].pageen, count);
 		if (rc < 0)
-			CDBG("%s: pageen not needed\n", __func__);
+			pr_err("%s: pageen not needed\n", __func__);
 
 		snprintf(property, PROPERTY_MAXSIZE, "qcom,saddr%d", i);
 		rc = of_property_read_u32_array(of, property,
@@ -757,12 +985,14 @@ static int msm_eeprom_spi_setup(struct spi_device *spi)
 		CDBG("%s: eeprom not matching %d\n", __func__, rc);
 		goto power_down;
 	}
+
 	rc = msm_camera_power_down(power_info, e_ctrl->eeprom_device_type,
 		&e_ctrl->i2c_client);
 	if (rc < 0) {
 		pr_err("failed rc %d\n", rc);
 		goto free_datamap;
 	}
+
 	e_ctrl->read_eeprom = 0;
 	/* initiazlie subdev */
 	v4l2_spi_subdev_init(&e_ctrl->msm_sd.sd,
@@ -776,6 +1006,7 @@ static int msm_eeprom_spi_setup(struct spi_device *spi)
 	e_ctrl->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_EEPROM;
 	msm_sd_register(&e_ctrl->msm_sd);
 	e_ctrl->is_supported =  1;
+
 	return 0;
 
 power_down:
@@ -872,6 +1103,7 @@ static int eeprom_config_read_cal_data32(struct msm_eeprom_ctrl_t *e_ctrl,
 			pr_err("failed rc %d\n", rc);
 		e_ctrl->read_eeprom = 1;
 	}
+
 	/* check range */
 	if (cdata.cfg.read_data.num_bytes >
 	    e_ctrl->cal_data.num_data) {
@@ -900,21 +1132,12 @@ static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 {
 	struct msm_eeprom_cfg_data *cdata = (struct msm_eeprom_cfg_data *)argp;
 	int rc = 0;
-	size_t length = 0;
 
 	CDBG("%s E\n", __func__);
 	switch (cdata->cfgtype) {
 	case CFG_EEPROM_GET_INFO:
 		CDBG("%s E CFG_EEPROM_GET_INFO\n", __func__);
 		cdata->is_supported = e_ctrl->is_supported;
-		length = strlen(e_ctrl->eboard_info->eeprom_name) + 1;
-		if (length > MAX_EEPROM_NAME) {
-			pr_err("%s:%d invalid eeprom name length %d\n",
-				__func__, __LINE__, (int)length);
-			rc = -EINVAL;
-			break;
-		}
-
 		memcpy(cdata->cfg.eeprom_name,
 			e_ctrl->eboard_info->eeprom_name,
 			sizeof(cdata->cfg.eeprom_name));
@@ -923,6 +1146,22 @@ static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 		CDBG("%s E CFG_EEPROM_GET_CAL_DATA\n", __func__);
 		cdata->cfg.get_data.num_bytes =
 			e_ctrl->cal_data.num_data;
+#ifdef X3_EEPROM_FEATURE
+		IS_E2PROM_JUCHEN(e_ctrl->eboard_info->eeprom_name) {
+		    cdata->cfg.get_data.is_3a_checksumed = FRONT_is_3a_checksumed;
+		    cdata->cfg.get_data.is_pdaf_checksumed = 0;
+		    CDBG("%s E CFG_EEPROM_GET_CAL_DATA FRONT_is_3a_checksumed=%d\n",
+			__func__,cdata->cfg.get_data.is_3a_checksumed);
+		} else IS_E2PROM_ONSEMI(e_ctrl->eboard_info->eeprom_name) {
+		    cdata->cfg.get_data.is_3a_checksumed = is_3a_checksumed;
+		    cdata->cfg.get_data.is_pdaf_checksumed = is_pdaf_checksumed;
+		    CDBG("%s E CFG_EEPROM_GET_CAL_DATA is_3a_checksumed=%d  is_pdaf_checksumed=%d\n",
+			__func__,cdata->cfg.get_data.is_3a_checksumed,cdata->cfg.get_data.is_pdaf_checksumed);
+		} else {
+		    cdata->cfg.get_data.is_3a_checksumed = e_ctrl->is_checksumed;
+		    cdata->cfg.get_data.is_pdaf_checksumed = 0;
+		}
+#endif
 		break;
 	case CFG_EEPROM_READ_CAL_DATA:
 		CDBG("%s E CFG_EEPROM_READ_CAL_DATA\n", __func__);
@@ -1087,6 +1326,26 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	rc = msm_eeprom_parse_memory_map(of_node, &e_ctrl->cal_data);
 	if (rc < 0)
 		goto free_datamap;
+
+#ifdef X3_EEPROM_FEATURE
+	rc = msm_camera_power_up(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type, &e_ctrl->i2c_client);
+	if (rc < 0) {
+		pr_err("%s: probe power up failed rc %d\n", __func__, rc);
+		goto power_down;
+	}
+	rc = read_eeprom_memory_and_checksum(e_ctrl, &e_ctrl->cal_data);
+	if (rc < 0) {
+		pr_err("%s: Sensor EEPROM Read And Checksum Failed\n",__func__);
+		goto power_down;
+	}
+	rc = msm_camera_power_down(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type,     &e_ctrl->i2c_client);
+	if (rc < 0) {
+		pr_err("%s: probe power down failed rc %d\n", __func__, rc);
+		goto power_down;
+	}
+#endif
 	e_ctrl->read_eeprom = 0;
 	v4l2_subdev_init(&e_ctrl->msm_sd.sd,
 		e_ctrl->eeprom_v4l2_subdev_ops);
@@ -1112,6 +1371,9 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	CDBG("%s X\n", __func__);
 	return rc;
 
+power_down:
+	msm_camera_power_down(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type, &e_ctrl->i2c_client);
 free_datamap:
 	kfree(e_ctrl->cal_data.mapdata);
 	kfree(e_ctrl->cal_data.map);
