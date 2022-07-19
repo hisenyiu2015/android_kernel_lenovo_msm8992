@@ -17,6 +17,9 @@
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/rtc.h>
+#ifdef CONFIG_VENDOR_EDIT
+#include <linux/time.h>
+#endif
 #include <linux/err.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
@@ -198,10 +201,17 @@ enum fg_mem_data_index {
 
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
+#ifdef CONFIG_VENDOR_EDIT
+	SETTING(SOFT_COLD,       0x454,   0,      10),
+	SETTING(SOFT_HOT,        0x454,   1,      500),
+	SETTING(HARD_COLD,       0x454,   2,      0),
+	SETTING(HARD_HOT,        0x454,   3,      600),
+#else
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
 	SETTING(HARD_HOT,        0x454,   3,      450),
+#endif
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -240,7 +250,12 @@ static struct fg_mem_data fg_data[FG_DATA_MAX] = {
 	DATA(BATT_ID_INFO,    0x594,   3,      1,     -EINVAL),
 };
 
+#ifdef CONFIG_VENDOR_EDIT
+static int update_curr;
+static int fg_debug_mask = 0x44;
+#else
 static int fg_debug_mask;
+#endif
 module_param_named(
 	debug_mask, fg_debug_mask, int, S_IRUSR | S_IWUSR
 );
@@ -420,6 +435,9 @@ struct fg_chip {
 	struct delayed_work	check_empty_work;
 	char			*batt_profile;
 	u8			thermal_coefficients[THERMAL_COEFF_N_BYTES];
+#ifdef CONFIG_VENDOR_EDIT
+	u8			thermal_coefficients_2[THERMAL_COEFF_N_BYTES];
+#endif
 	u32			cc_cv_threshold_mv;
 	unsigned int		batt_profile_len;
 	unsigned int		batt_max_voltage_uv;
@@ -1222,7 +1240,9 @@ static int get_prop_capacity(struct fg_chip *chip)
 	if (chip->battery_missing)
 		return MISSING_CAPACITY;
 	if (!chip->profile_loaded && !chip->use_otp_profile)
+#ifndef CONFIG_VENDOR_EDIT
 		return DEFAULT_CAPACITY;
+#endif
 	if (chip->charge_full)
 		return FULL_CAPACITY;
 	if (chip->soc_empty) {
@@ -1586,6 +1606,72 @@ out:
 		&chip->update_sram_data,
 		msecs_to_jiffies(resched_ms));
 }
+#ifdef CONFIG_VENDOR_EDIT
+static int update_current(struct fg_chip *chip)
+{
+	int rc;
+	u8 reg[2];
+	int64_t temp = 0;
+	s64 start_time,end_time;
+	struct timespec cur_time;
+	unsigned int rd_time;
+
+	cur_time = current_kernel_time();
+	start_time = timespec_to_ns(&cur_time);
+
+	rc = fg_mem_read(chip, reg, fg_data[3].address,
+	fg_data[3].len, fg_data[3].offset, 0);
+	if (rc) {
+		pr_err("Failed to update batt curr data\n");
+		return 0;
+	}
+	temp = reg[0] | (reg[1] << 8);
+	temp = twos_compliment_extend(temp, fg_data[3].len);
+	fg_data[3].value = div_s64(
+			(s64)temp * LSB_16B_NUMRTR,
+			LSB_16B_DENMTR);
+	cur_time = current_kernel_time();
+	end_time = timespec_to_ns(&cur_time);
+	rd_time = (end_time - start_time)/1000000;
+	if (fg_debug_mask & FG_MEM_DEBUG_READS)
+		pr_info("BATT_CURR %lld %d rd_time is %d ms\n",temp, fg_data[3].value,rd_time);
+	return fg_data[3].value;
+}
+int batt_curr_get(void)
+{
+	struct power_supply *bms_psy;
+	struct fg_chip *chip;
+
+	bms_psy = power_supply_get_by_name("bms");
+	if (!bms_psy) {
+		pr_err("bms psy not found\n");
+		return 0;
+	}
+
+	chip = container_of(bms_psy, struct fg_chip, bms_psy);
+
+	return update_current(chip);
+}
+
+static int update_current_now(char *buffer,struct kernel_param *kp)
+{
+
+	struct power_supply *bms_psy;
+	struct fg_chip *chip;
+
+	bms_psy = power_supply_get_by_name("bms");
+	if (!bms_psy) {
+		pr_err("bms psy not found\n");
+		return 0;
+	}
+
+	chip = container_of(bms_psy, struct fg_chip, bms_psy);
+
+	return sprintf(buffer,"%d",update_current(chip));
+}
+module_param_call(update_curr,NULL,update_current_now,&update_curr,0444);
+MODULE_PARM_DESC(update_curr, "Update batttery current");
+#endif
 
 #define BATT_TEMP_OFFSET	3
 #define BATT_TEMP_CNTRL_MASK	0x17
@@ -3643,6 +3729,18 @@ fail:
 	chip->fg_restarting = false;
 	return -EINVAL;
 }
+#ifdef CONFIG_VENDOR_EDIT
+static void bat_id_set_beta(struct fg_chip *chip)
+{
+	int bat_id;
+	bat_id = get_sram_prop_now(chip, FG_DATA_BATT_ID);
+	bat_id /=1000;
+	if(bat_id < 7 && chip->use_thermal_coefficients){
+		fg_mem_write(chip, chip->thermal_coefficients_2,
+			0x444, THERMAL_COEFF_N_BYTES,0x2, 0);
+	}
+}
+#endif
 
 #define FG_PROFILE_LEN			128
 #define PROFILE_COMPARE_LEN		32
@@ -3723,7 +3821,9 @@ wait:
 
 	if (rc)
 		pr_warn("couldn't find battery max voltage\n");
-
+#ifdef CONFIG_VENDOR_EDIT
+	bat_id_set_beta(chip);
+#endif
 	/*
 	 * Only configure from profile if fg-cc-cv-threshold-mv is not
 	 * defined in the charger device node.
@@ -4156,6 +4256,14 @@ static int fg_of_init(struct fg_chip *chip)
 		memcpy(chip->thermal_coefficients, data, len);
 		chip->use_thermal_coefficients = true;
 	}
+#ifdef CONFIG_VENDOR_EDIT
+	data = of_get_property(chip->spmi->dev.of_node,
+			"qcom,thermal-coefficients-atl", &len);
+	if (data && len == THERMAL_COEFF_N_BYTES) {
+		memcpy(chip->thermal_coefficients_2, data, len);
+		chip->use_thermal_coefficients = true;
+	}
+#endif
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc", rc, 1);
 	settings[FG_MEM_RESUME_SOC].value =
 		DIV_ROUND_CLOSEST(settings[FG_MEM_RESUME_SOC].value

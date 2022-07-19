@@ -77,7 +77,11 @@ module_param(override_phy_init, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(override_phy_init, "Override HSPHY Init Seq");
 
 /* Enable Proprietary charger detection */
+#ifdef CONFIG_VENDOR_EDIT
+static bool prop_chg_detect = 1;
+#else
 static bool prop_chg_detect;
+#endif
 module_param(prop_chg_detect, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(prop_chg_detect, "Enable Proprietary charger detection");
 
@@ -255,6 +259,10 @@ struct dwc3_msm {
 
 #define DSTS_CONNECTSPD_SS		0x4
 
+#ifdef CONFIG_VENDOR_EDIT
+extern int is_charger_plug_in(void);
+extern u8 chg_src_get(void);
+#endif
 
 static struct usb_ext_notification *usb_ext;
 
@@ -1378,6 +1386,9 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 	bool is_dcd = false, tmout, vout;
 	static bool dcd;
 	unsigned long delay;
+#ifdef CONFIG_VENDOR_EDIT
+	u8 chrg_src;
+#endif
 
 	dev_dbg(mdwc->dev, "chg detection work\n");
 	switch (mdwc->chg_state) {
@@ -1454,6 +1465,17 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 				mdwc->ext_chg_active = true;
 			}
 		}
+#ifdef CONFIG_VENDOR_EDIT
+		if(mdwc->charger.chg_type == DWC3_DCP_CHARGER){
+			is_charger_plug_in();
+			chrg_src = chg_src_get();
+			if(chrg_src == 0x10){
+				mdwc->charger.chg_type =
+						DWC3_FLOATED_CHARGER;/*Set float charger if DCP plugin slow*/
+				printk("%s: set dcp chargr to float_charger\n",__func__);
+			}
+		}
+#endif
 		dev_dbg(mdwc->dev, "chg_type = %s\n",
 			chg_to_string(mdwc->charger.chg_type));
 		mdwc->charger.notify_detection_complete(mdwc->otg_xceiv->otg,
@@ -2285,7 +2307,11 @@ static int dwc3_msm_power_get_property_usb(struct power_supply *psy,
 		val->intval = mdwc->vbus_active;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
+#ifdef CONFIG_VENDOR_EDIT
+		val->intval = is_charger_plug_in();
+#else
 		val->intval = mdwc->online;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		val->intval = psy->type;
@@ -2370,9 +2396,11 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		psy->type = val->intval;
 
 		switch (psy->type) {
+#ifndef CONFIG_VENDOR_EDIT
 		case POWER_SUPPLY_TYPE_USB:
 			mdwc->charger.chg_type = DWC3_SDP_CHARGER;
 			break;
+#endif
 		case POWER_SUPPLY_TYPE_USB_DCP:
 			mdwc->charger.chg_type = DWC3_DCP_CHARGER;
 			break;

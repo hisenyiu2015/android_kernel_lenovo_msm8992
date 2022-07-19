@@ -428,6 +428,12 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 
 skip_psy_type:
 
+#ifdef CONFIG_VENDOR_EDIT
+	if (dotg->charger->chg_type == DWC3_FLOATED_CHARGER){
+		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
+		power_supply_set_supply_type(dotg->psy, power_supply_type);
+	}
+#endif
 	if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
 
@@ -490,6 +496,9 @@ void dwc3_otg_init_sm(struct dwc3_otg *dotg)
 		set_bit(B_SESS_VLD, &dotg->inputs);
 }
 
+#ifdef CONFIG_VENDOR_EDIT
+extern int set_float_chg(bool en);
+#endif
 /**
  * dwc3_otg_sm_work - workqueue function.
  *
@@ -595,9 +604,16 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					 */
 					if (dotg->charger_retry_count ==
 						max_chgr_retry_count) {
+#ifdef CONFIG_VENDOR_EDIT
+						dwc3_otg_set_power(phy, DWC3_IDEV_CHG_MAX);
+#else
 						dwc3_otg_set_power(phy, 0);
+#endif
 						dbg_event(0xFF, "FLCHG put", 0);
 						pm_runtime_put_sync(phy->dev);
+#ifdef CONFIG_VENDOR_EDIT
+						set_float_chg(true);
+#endif
 						break;
 					}
 					charger->start_detection(dotg->charger,
