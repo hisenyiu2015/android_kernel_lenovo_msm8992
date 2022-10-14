@@ -92,4 +92,5 @@ obj-$(CONFIG_SENSORS_ISL29044A)	+= isl29044a.o
 ifdef CONFIG_VENDOR_EDIT
 obj-$(CONFIG_INPUT_CWSTM32)     += CwMcuSensor.o
 obj-y += fpc1020_main.o
+obj-y += hall_switch.o
 endif
